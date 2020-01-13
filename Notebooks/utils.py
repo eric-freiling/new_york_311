@@ -8,6 +8,7 @@ import os
  #import xgboost as xgb
 # from sklearn.cross_validation import cross_val_score
 from sklearn import metrics
+import psycopg2
 
 from fastai import *
 from fastai.tabular import *
@@ -17,212 +18,25 @@ os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
 save_path = Path('../Saved_Models')
 
 
-# file_path = "../Interview_Project/Medical Appointments.csv"
-# df = pd.read_csv(file_path)
-# keys = list(df.keys())
-# values = df.values
-# answers = values[:, -1]
-# num_rows = len(answers)
-# y = np.zeros(num_rows)
-# y[answers == "Yes"] = 1
-#
-# no_show_percent = np.sum(y) / len(y)
-#
-# x = df[[
-#     'Gender',
-#     'ScheduledDay',
-#     'AppointmentDay',
-#     'Age',
-#     'Neighbourhood',
-#     'Scholarship',
-#     'Hipertension',
-#     'Diabetes',
-#     'Alcoholism',
-#     'Handcap',
-#     'SMS_received'
-# ]]
-# y=df['No-show']  # Labels
-# # Split dataset into training set and test set
-# x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2)
+def query_db(query):
+    '''
+    Runs sql query on 311 database and returns a pandas DataFrame.
+    Redshift is a data warehouse based on PostgreSQL, so syntax is mostly the
+    same
+    '''
+    host = 'interview-ds.ckgnwnm6pw4o.us-east-1.redshift.amazonaws.com'
+    port = 5439
+    db = 'interview'
+    username = 'dsguest'
+    password = 'nX9EFYUZ5Yu#0q'
+    conn = psycopg2.connect(host=host, port=port, dbname=db, user=username,
+    password=password)
+    cur = conn.cursor()
+    cur.execute(query)
+    rows = cur.fetchall()
 
-
-def normalize_data(df, ohe=True):
-    df["AppointmentDay_DT"] = pd.to_datetime(df['AppointmentDay'])
-    df["ScheduledDay_DT"] = pd.to_datetime(df['ScheduledDay'])
-    df["ScheduledDayOfWeek"] = df['ScheduledDay_DT'].dt.dayofweek
-    df["AppointmentDayOfWeek"] = df['AppointmentDay_DT'].dt.dayofweek
-    y_str = df["No-show"].values
-    y = np.zeros(len(y_str))
-    y[y_str == "Yes"] = 1
-    cols = [
-        "Age",
-        "Scholarship",
-        "Hipertension",
-        "Alcoholism",
-        "Diabetes",
-        "SMS_received",
-        "ScheduledDayOfWeek",
-        "AppointmentDayOfWeek"
-    ]
-    if ohe:
-        df2 = pd.DataFrame(df[cols].values, columns=cols)
-        # df2["Age"] = (df["Age"] - df["Age"].mean()) / df["Age"].std()
-        le_gender = LabelEncoder()
-        df2["Gender"] = le_gender.fit_transform(df["Gender"].values)
-        dummies_age =  pd.get_dummies(df["Age"])
-        dummies_hndcp = pd.get_dummies(df["Handcap"])
-        dummies_nbhd = pd.get_dummies(df["Neighbourhood"])
-
-        return pd.concat([df2, dummies_hndcp, dummies_nbhd, dummies_age], axis=1), y
-    else:
-        cols = cols + ["Neighbourhood", "Handcap"]
-        df2 = pd.DataFrame(df[cols].values, columns=cols)
-        df2["Age"] = (df["Age"] - df["Age"].mean()) / df["Age"].std()
-        le = LabelEncoder()
-        le_gender = LabelEncoder()
-        df2["Neighbourhood"] = le.fit_transform(df2["Neighbourhood"].values)
-        df2["Gender"] = le_gender.fit_transform(df["Gender"].values)
-
-        return df2, y
-
-
-def acc(y, y_hat):
-    return round(np.sum(y == y_hat)*100 / len(y), 2)
-
-
-def random_forest(x_train, x_test, y_train, y_test, cols, depth=4, n_est=100):
-    rf = RandomForestClassifier(max_depth=depth, n_estimators=n_est, class_weight="balanced_subsample")
-    rf.fit(x_train, y_train)
-    y_hat_train = rf.predict(x_train)
-    y_hat_test = rf.predict(x_test)
-
-    train_acc = acc(y_hat_train, y_train)
-    test_acc = acc(y_hat_test, y_test)
-    print("Training Accuracy: {}".format(train_acc))
-    print("Testing Accuracy: {}".format(test_acc))
-    sort_ind = np.argsort(rf.feature_importances_)
-    cols = np.array(cols)
-    print("Feature Importance: ", list(zip(cols[sort_ind], rf.feature_importances_[sort_ind])))
-    return rf
-
-
-def define_seq_model(input_shape, hidden_layers, output_size,
-                     learning_rate=0.01, drop_rate=0.5, hidden_act='relu', final_act='sigmoid'):
-    # first input model
-    model = Sequential()
-    model.add(Dense(hidden_layers[0], activation=hidden_act, input_dim=input_shape))
-    model.add(Dropout(drop_rate))
-    for i in range(1, len(hidden_layers)):
-        model.add(Dense(hidden_layers[i], activation=hidden_act))
-        model.add(Dropout(drop_rate))
-    model.add(Dense(output_size, activation=final_act))
-    opt = rmsprop(lr=learning_rate)
-    model.compile(loss='binary_crossentropy',
-                  optimizer=opt,
-                  metrics=['accuracy'])
-
-    return model
-
-
-def get_batch(x, y, batch_size):
-    indices_0 = np.where(y == 0)[0]
-    indices_1 = np.where(y == 1)[0]
-
-    num_0 = len(indices_0)
-    num_1 = len(indices_1)
-
-    indices_0_ind = np.random.randint(0, num_0, size=batch_size // 2)
-    indices_1_ind = np.random.randint(0, num_1, size=batch_size // 2)
-
-    indices = np.concatenate([indices_0[indices_0_ind], indices_1[indices_1_ind]])
-    np.random.shuffle(indices)
-
-    return x[indices, :], y[indices]
-
-
-def save_model_weights(model, weight_path):
-    # Usually I just use model.save_model() but there seems to be a bug when using a windows machine
-    W = model.get_weights()
-    np.save(weight_path, W)
-
-
-def get_model(weight_path, input_shape, hidden_layers, output_size):
-    model = define_seq_model(input_shape, hidden_layers, output_size)
-    W = np.load(weight_path + ".npy")
-    model.set_weights(W)
-    return model
-
-
-def train_nn(x_train, y_train, x_test, y_test):
-
-    model_name = 'nn_4'
-    batch_size = 10000
-    epochs = 5000
-    input_size = x_train.shape[1]
-    hidden_layers = [100, 100, 100, 50]
-    output_size = 1
-    learning_rate = 0.01
-    print_iter = 100
-    save_iter = 100
-
-    save_dir = os.path.join(os.getcwd(), 'saved_models')
-    model_path = os.path.join(save_dir, model_name)
-
-    # Create folder to save models
-    if not os.path.isdir(save_dir):
-        os.makedirs(save_dir)
-
-    # Check to see if model already exists
-    # If exists load the model and pick up training where we left off
-    # If doesn't exist, then create it
-    if os.path.exists(model_path + ".npy"):
-        print("Loading Saved Model...\n")
-        model = get_model(model_path, input_size, hidden_layers, output_size)
-        # model = load_model(model_path)
-    else:
-        print("Creating New Model...\n")
-        model = define_seq_model(input_size, hidden_layers, output_size, learning_rate=learning_rate)
-
-   # Run Epochs
-    print("Starting to Train...\n")
-
-    for i in range(epochs):
-        # Load training batch
-        x_batch, y_batch = get_batch(x_train, y_train, batch_size)
-
-        # Train on batch
-        model.train_on_batch(x_batch, y_batch)
-
-        # Print updates
-        if i % print_iter == 0:
-            print("Epoch {}/{}".format(i, epochs))
-            score = model.evaluate(x_batch, y_batch, verbose=0)
-            loss = round(score[0], 2)
-            acc = round(score[1], 2)
-            print('Training ---- loss: {} accuracy: {}'.format(loss, acc))
-
-
-            x_batch, y_batch = get_batch(x_test, y_test, batch_size)
-            score = model.evaluate(x_batch, y_batch, verbose=0)
-            loss = round(score[0], 2)
-            acc = round(score[1], 2)
-            print('Validation -- loss: {} accuracy: {}\n'.format(loss, acc))
-
-        if i % save_iter == 0:
-            save_model_weights(model, model_path)
-            # model.save(model_path)
-
-    save_model_weights(model, model_path)
-    # model.save(model_path)
-    print('\nSaved trained model at %s ' % model_path)
-
-
-
-def nn(df):
-    x, y = normalize_data(df)
-    x = x.values
-    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2)
-    train_nn(x_train, y_train, x_test, y_test)
+    rows = pd.DataFrame(rows)
+    return rows
 
 
 def rand_f(df):
