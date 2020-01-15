@@ -185,7 +185,9 @@ def get_col_classes():
 
 def filter_rows(df):
     labels = np.load(save_path / 'labels.npy')
-    return df[df['complaint_type'].isin(labels)]
+    df = df[df['complaint_type'].isin(labels)]
+    df = df.dropna(how='all')
+    return df 
 
 
 def drop_useless_cols(df, drop_cols):
@@ -303,11 +305,11 @@ def process_cat_cols(df, cat_cols, ohe_limit=20):
     df = df.drop(columns=new_drop_cols)
     df.reset_index(drop=True, inplace=True)
     df = pd.concat([df] + new_cols, axis=1)
-    cat_cols += new_cols
+    cat_cols += new_col_names
     
     return df, cat_cols, label_encoders
     
-    
+
 def split_target(df, dep_var, label_encoders):
     target = [str(v) for v in df[dep_var].values]
     le = LabelEncoder()
