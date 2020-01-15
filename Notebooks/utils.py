@@ -15,7 +15,7 @@ from fastai.tabular import *
 
 os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
 
-save_path = Path('../Saved_Models')
+save_path = Path('../Saved_Files')
 
 
 def query_db(query):
@@ -269,6 +269,7 @@ def process_cat_cols(df, cat_cols, ohe_limit=20):
     # and different algorithms might not handle it
     nan_cols = list(set(df.columns[df.isna().any()]) & set(cat_cols))
     for nc in nan_cols:
+        # df.loc[:, nc] = df[nc].fillna('missing')
         df[nc] = df[nc].fillna('missing')
 
     # Go through categorical columns
