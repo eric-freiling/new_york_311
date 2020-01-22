@@ -21,3 +21,16 @@ This projects assumes there is a path '../data/new_york_311' with the downloaded
 * Notebooks/visualzation.ipynb
     * A proof of concept of a geographical visualzation
 
+## Timeine
+* Challenge 1:
+    * Dec 14th: spent a couple hours with 2 questions
+* Challenge 2:
+    * Dec: spent a whole day dealing with online GPU servers
+        * spent a couple hours trying to get fastai working
+        * Salamnder.ai is my usual and was failing. Not supproted that well
+        * Tried a new provider, Paperspace, but was getting memory issues
+        * Decided to abandon using all the data and took a sample
+        * Got Kaggle's free kernels to run fastai on a sample of the data
+    * Jan: Just short of a day
+        * A half day on Random Forest predicting complaint type and time elapsed 
+        * A couple hours on visualzation
