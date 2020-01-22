@@ -21,7 +21,7 @@ This projects assumes there is a path '../data/new_york_311' with the downloaded
 * Notebooks/visualzation.ipynb
     * A proof of concept of a geographical visualzation
 
-## Timeine
+## Timeline
 * Challenge 1:
     * Dec 14th: spent a couple hours with 2 questions
 * Challenge 2:
