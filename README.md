@@ -23,7 +23,7 @@ This projects assumes there is a path '../data/new_york_311' with the downloaded
 
 ## Timeline: Approx 2 days of time spent
 * Challenge 1:
-    * Dec 14th: spent a couple hours with 2 questions
+    * Dec 14th: spent a couple hours with 2 questions and getting setup 
 * Challenge 2:
     * Dec: spent a whole day dealing with online GPU servers
         * spent a couple hours trying to get fastai working
